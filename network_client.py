@@ -89,6 +89,9 @@ class Chat:
                 break
         print("Peer info: ", from_server)
         if None not in from_server.values():
+            self.sending_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.sending_sock.connect((from_server['ip'], from_server['port']))
+            from_server['sock'] = self.sending_sock
             self.add_dict[uname] = from_server
         else:
             print("No such user found")
@@ -97,16 +100,14 @@ class Chat:
     def acc_connection(self):
 
         while True:
-            print("assss")
             conn, addr = self.receiving_sock.accept()
-            print("Acc")
             rthread = threading.Thread(target=self.get_msg,kwargs={'c':conn})
             rthread.start()
 
 
     @threaded
     def get_msg(self,c):
-        
+
         while True:
             msg_dict = c.recv(4096)
             if not msg_dict:
@@ -115,29 +116,25 @@ class Chat:
             msg_dict = json.loads(msg_dict.decode('utf-8'))
             self.messages[msg_dict['from_uname']] = msg_dict['message']
             print("Msg Received: ",msg_dict)
-            self.getpeerinfo(msg_dict['from_uname'])
+
+            if self.add_dict.get(msg_dict['from_uname'],None) is None:
+                self.getpeerinfo(msg_dict['from_uname'])
+
+
 
     def send_msg(self,uname,msg):
         uinfo = self.add_dict[uname]
-        self.sending_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self.sending_sock.bind(('',self.sending_port)) 
-        self.sending_sock.connect((uinfo['ip'], uinfo['port']))
-        self.sending_sock.send(bytes(json.dumps({'from_uname':self.username,'message':msg}),'utf-8'))
-        self.sending_sock.close()
-
+        uinfo['sock'].send(bytes(json.dumps({'from_uname':self.username,'message':msg}),'utf-8'))
 
 
     def startcli(self):
         t1 = threading.Thread(target=self.acc_connection)
         t1.start()
-        # self.acc_connection()
 
     def purge(self):
         self.sock_to_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock_to_server.connect(('0.0.0.0', 8081))
-
         uj = json.dumps({'purge':self.username})
-
         self.sock_to_server.send(bytes(uj,'utf-8'))
 
 
