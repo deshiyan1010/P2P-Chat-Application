@@ -3,6 +3,26 @@ import json
 import threading
 import time
 import atexit
+from peewee import *
+import os
+
+from ecc import gen_pub_pvt_key
+
+
+
+db = SqliteDatabase(os.path.join(os.path.dirname(__file__),'client.db'))
+db.connect()
+
+
+class User(Model):
+    uname = TextField()
+    publicKey = TextField()
+    privateKey = TextField()
+
+    class Meta:
+        database = db
+
+
 
 
 def threaded(fn):
@@ -16,7 +36,7 @@ class Chat:
 
 
     def __init__(self):
-        self.username = input('Username: ')
+        
 
         self.sending_port = self.get_free_tcp_port()
         self.receiving_port = self.get_free_tcp_port()
@@ -33,6 +53,20 @@ class Chat:
 
         self.add_dict = {}
         self.messages = {}
+
+        if 'client.db' in os.listdir(os.path.dirname(__file__)):
+            self.username = User.select()[0].uname
+            self.pub_key = User.select()[0].publicKey
+            self.pvt_key = User.select()[0].privateKey
+
+        else:
+            self.username = input('Username: ')
+            self.pub_key,self.pvt_key = gen_pub_pvt_key()
+            create_user = User(uname='deshiyan',publicKey=self.pub_key,privateKey=self.pvt_key)
+            create_user.save()
+
+
+
 
 
     def get_free_tcp_port(self):
