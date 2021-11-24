@@ -50,5 +50,7 @@ class Server:
     def purgeuser(self,uname):
         del self.addr_dict[uname]
 
-serv = Server()
-serv.start()
+
+if __name__=="__main__":
+    serv = Server()
+    serv.start()
