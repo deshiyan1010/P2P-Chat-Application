@@ -24,7 +24,6 @@ class EllipticCurveCryptography:
 
         while low > 1:
             ratio = int(high/low)
-
             nm, new = hm-lm*ratio, high-low*ratio
             lm, low, hm, high = nm, new, lm, low
 
