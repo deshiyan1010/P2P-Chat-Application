@@ -107,6 +107,10 @@ class EllipticCurveCryptography:
 
 
 
+    def create_shared_key(self,others_pub,own_pvt_key):
+        return self.EccMultiply(others_pub,own_pvt_key)
+
+
 
 
 
@@ -160,7 +164,7 @@ class AESCipher(object):
         return self.__unpad(plain_text)
 
 
-
+    
 
 
 
@@ -168,17 +172,24 @@ if __name__=="__main__":
 
     ecc = EllipticCurveCryptography()
     pux,puy,key = ecc.generate_ecc_pair()
+    pux2,puy2,key2 = ecc.generate_ecc_pair()
 
-    
+
+
+    shared = ecc.create_shared_key((pux,puy),key2)[0]
+    shared2 = ecc.create_shared_key((pux2,puy2),key)[0]
+
+    print(shared,shared2)
+
     cipher = AESCipher()
 
 
-    encrypted = cipher.encrypt('Secret',key)
+    encrypted = cipher.encrypt('Secret',shared)
 
 
     signed = ecc.sign(key,encrypted)
 
     print(ecc.verify(pux,puy,encrypted,*signed))
 
-    decrypted = cipher.decrypt(encrypted,key)
+    decrypted = cipher.decrypt(encrypted,shared)
     print(decrypted)

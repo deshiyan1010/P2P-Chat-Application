@@ -1,3 +1,4 @@
+from enum import unique
 import socket
 import json
 import threading
@@ -6,23 +7,64 @@ import atexit
 from peewee import *
 import os
 
-from ecc import gen_pub_pvt_key
+from cryptotools import AESCipher, EllipticCurveCryptography
 
 
 
 db = SqliteDatabase(os.path.join(os.path.dirname(__file__),'client.db'))
-db.connect()
+db.connect(reuse_if_open=True)
 
 
 class User(Model):
-    uname = TextField()
-    publicKey = TextField()
-    privateKey = TextField()
+    uname = CharField(unique=True)
+    xpublicKey = CharField()
+    ypublicKey = CharField()
+    privateKey = CharField()
+
+    class Meta:
+        database = db
+
+class Peers(Model):
+    uname = CharField(unique=True)
+    xpublicKey = CharField()
+    ypublicKey = CharField()
 
     class Meta:
         database = db
 
 
+
+class NewMessages(Model):
+    uname = ForeignKeyField(Peers)
+    message = TextField()
+    timestamp = TimestampField()
+
+    class Meta:
+        database = db
+
+
+
+class ReceivedMessages(Model):
+    uname = ForeignKeyField(Peers)
+    message = TextField()
+    timestamp = TimestampField()
+
+    class Meta:
+        database = db
+
+
+
+
+
+class SentMessages(Model):
+    uname = ForeignKeyField(Peers)
+    message = TextField()
+    timestamp = TimestampField()
+
+    class Meta:
+        database = db
+
+db.create_tables([User,Peers,NewMessages,ReceivedMessages,SentMessages])
 
 
 def threaded(fn):
@@ -37,6 +79,8 @@ class Chat:
 
     def __init__(self):
         
+        self.ecc = EllipticCurveCryptography()
+        self.aes = AESCipher()
 
         self.sending_port = self.get_free_tcp_port()
         self.receiving_port = self.get_free_tcp_port()
@@ -54,20 +98,23 @@ class Chat:
         self.add_dict = {}
         self.messages = {}
 
-        if 'client.db' in os.listdir(os.path.dirname(__file__)):
+        try:
             self.username = User.select()[0].uname
-            self.pub_key = User.select()[0].publicKey
-            self.pvt_key = User.select()[0].privateKey
+            self.xpub_key = int(User.select()[0].xpublicKey)
+            self.ypub_key = int(User.select()[0].ypublicKey)
+            self.pvt_key = int(User.select()[0].privateKey)
 
-        else:
+        except:
             self.username = input('Username: ')
-            self.pub_key,self.pvt_key = gen_pub_pvt_key()
-            create_user = User(uname='deshiyan',publicKey=self.pub_key,privateKey=self.pvt_key)
+            self.xpub_key,self.ypub_key,self.pvt_key = self.ecc.generate_ecc_pair()
+            create_user = User(uname=self.username,xpublicKey=self.xpub_key,ypublicKey=self.ypub_key,privateKey=self.pvt_key)
             create_user.save()
 
 
 
-
+        self.connect()
+        self.startcli()
+        atexit.register(self.purge)
 
     def get_free_tcp_port(self):
 
@@ -126,6 +173,7 @@ class Chat:
             self.sending_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sending_sock.connect((from_server['ip'], from_server['port']))
             from_server['sock'] = self.sending_sock
+            from_server['ke_done'] = False
             self.add_dict[uname] = from_server
         else:
             print("No such user found")
@@ -135,6 +183,8 @@ class Chat:
 
         while True:
             conn, addr = self.receiving_sock.accept()
+            self.receive_key(conn)
+            self.send_key(conn)
             rthread = threading.Thread(target=self.get_msg,kwargs={'c':conn})
             rthread.start()
 
@@ -148,8 +198,19 @@ class Chat:
                 continue
 
             msg_dict = json.loads(msg_dict.decode('utf-8'))
-            self.messages[msg_dict['from_uname']] = msg_dict['message']
-            print("Msg Received: ",msg_dict)
+
+            xpub,ypub = self.pub_keys(msg_dict['from_uname'])
+
+            if self.ecc.verify(xpub,ypub,msg_dict['enc_msg'],*msg_dict['signed_digest']):
+                print("Sign verified")
+
+            else:
+                print("Verification failed")
+
+
+            print("Message received: ",self.decrypt(msg_dict['from_uname'],msg_dict['enc_msg']))
+
+            print("Msg Dict: ",msg_dict)
 
             if self.add_dict.get(msg_dict['from_uname'],None) is None:
                 self.getpeerinfo(msg_dict['from_uname'])
@@ -157,8 +218,48 @@ class Chat:
 
 
     def send_msg(self,uname,msg):
+
+        if self.add_dict.get(uname,None) is None:
+                self.getpeerinfo(uname)
+
         uinfo = self.add_dict[uname]
-        uinfo['sock'].send(bytes(json.dumps({'from_uname':self.username,'message':msg}),'utf-8'))
+
+        enc_msg = self.encrypt(uname,msg)
+        signed_digest = self.ecc.sign(self.pvt_key,enc_msg)
+        
+        if uinfo['ke_done']==False:
+            self.send_key(uinfo['sock'])
+            self.receive_key(uinfo['sock'])
+            uinfo['ke_done'] = True
+        
+        uinfo['sock'].send(bytes(json.dumps({'from_uname':self.username,'enc_msg':enc_msg,'signed_digest':signed_digest}),'utf-8'))
+
+
+    def encrypt(self,uname,msg):
+
+        xpub,ypub = self.pub_keys(uname)
+
+        shared_key = self.ecc.create_shared_key((xpub,ypub),self.pvt_key)
+
+        enc_msg = self.aes.encrypt(msg,shared_key[0])
+
+        return enc_msg
+
+    def decrypt(self,uname,enc_msg):
+        
+        xpub,ypub = self.pub_keys(uname)
+
+        shared_key = self.ecc.create_shared_key((xpub,ypub),self.pvt_key)
+
+        dec_msg = self.aes.decrypt(enc_msg,shared_key[0])
+
+        return dec_msg
+
+
+    def pub_keys(self,uname):
+        peer_info = Peers.select().where(Peers.uname==uname)[0]
+        xpub,ypub = int(peer_info.xpublicKey),int(peer_info.ypublicKey)
+        return xpub,ypub
 
 
     def startcli(self):
@@ -172,9 +273,28 @@ class Chat:
         self.sock_to_server.send(bytes(uj,'utf-8'))
 
 
+    def receive_key(self,c):
+        while True:
+            ke_dict = c.recv(4096)
+            if ke_dict:
+                break
+
+        ke_dict = json.loads(ke_dict.decode('utf-8'))
+        try:
+            p = Peers(uname=ke_dict['from_user'],xpublicKey=ke_dict['xpub'],ypublicKey=ke_dict['ypub'])
+            p.save()
+        except:
+            pass
+
+    def send_key(self,conn):
+        user = User.select()[0]
+        conn.send(bytes(json.dumps({'from_user':user.uname,'xpub':user.xpublicKey,'ypub':user.ypublicKey}),'utf-8'))
 
 if __name__=="__main__":
     c = Chat()
     c.connect()
     c.startcli()
     atexit.register(c.purge)
+
+
+
