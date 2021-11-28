@@ -208,13 +208,18 @@ class Chat:
                 print("Verification failed")
 
 
-            print("Message received: ",self.decrypt(msg_dict['from_uname'],msg_dict['enc_msg']))
+            dec_msg = self.decrypt(msg_dict['from_uname'],msg_dict['enc_msg'])
+            print("Message received: ",dec_msg)
 
             print("Msg Dict: ",msg_dict)
-
+            
+            
             if self.add_dict.get(msg_dict['from_uname'],None) is None:
                 self.getpeerinfo(msg_dict['from_uname'])
 
+            user_obj = Peers.select().where(Peers.uname==msg_dict['from_uname'])[0]
+            msg_obj = NewMessages(uname=user_obj,message=dec_msg,timestamp=time.time())
+            msg_obj.save()
 
 
     def send_msg(self,uname,msg):
@@ -233,6 +238,10 @@ class Chat:
             uinfo['ke_done'] = True
         
         uinfo['sock'].send(bytes(json.dumps({'from_uname':self.username,'enc_msg':enc_msg,'signed_digest':signed_digest}),'utf-8'))
+
+        user_obj = Peers.select().where(Peers.uname==uname)[0]
+        msg_obj = SentMessages(uname=user_obj,message=msg,timestamp=time.time())
+        msg_obj.save()
 
 
     def encrypt(self,uname,msg):
@@ -290,11 +299,15 @@ class Chat:
         user = User.select()[0]
         conn.send(bytes(json.dumps({'from_user':user.uname,'xpub':user.xpublicKey,'ypub':user.ypublicKey}),'utf-8'))
 
+    def message_read(self,uname):
+        user_obj = Peers.select().where(Peers.uname==uname)[0]
+        list_read_msgs = NewMessages.select().where(NewMessages.uname==user_obj)
+
+        for record in list_read_msgs:
+            msg_obj = ReceivedMessages(uname=user_obj,message=record.message,timestamp=record.timestamp)
+            msg_obj.save()
+            record.delete_instance()
+
+
 if __name__=="__main__":
     c = Chat()
-    c.connect()
-    c.startcli()
-    atexit.register(c.purge)
-
-
-
