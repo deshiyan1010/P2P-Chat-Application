@@ -74,6 +74,9 @@ def threaded(fn):
         return thread
     return wrapper
 
+
+
+
 class Chat:
 
 
@@ -139,7 +142,7 @@ class Chat:
         self.sock_to_server.connect(('0.0.0.0', 8081))
 
 
-        uj = json.dumps({'register':self.username,'port':self.receiving_port})
+        uj = json.dumps({'register':self.username,'port':self.receiving_port,'xpub':self.xpub_key,'ypub':self.ypub_key})
         self.sock_to_server.send(bytes(uj,'utf-8'))
 
 
@@ -193,11 +196,7 @@ class Chat:
     def get_msg(self,c):
 
         while True:
-            msg_dict = c.recv(4096)
-            if not msg_dict:
-                continue
-
-            msg_dict = json.loads(msg_dict.decode('utf-8'))
+            msg_dict = self.receive(c)
 
             xpub,ypub = self.pub_keys(msg_dict['from_uname'])
 
@@ -283,12 +282,8 @@ class Chat:
 
 
     def receive_key(self,c):
-        while True:
-            ke_dict = c.recv(4096)
-            if ke_dict:
-                break
+        ke_dict = self.receive(c)
 
-        ke_dict = json.loads(ke_dict.decode('utf-8'))
         try:
             p = Peers(uname=ke_dict['from_user'],xpublicKey=ke_dict['xpub'],ypublicKey=ke_dict['ypub'])
             p.save()
