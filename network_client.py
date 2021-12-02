@@ -150,7 +150,7 @@ class Chat:
 
 
         if from_server['status']==0:
-            print("Connecting to server failed.")
+            print("Username taken...")
             exit()
         self.sock_to_server.close()
         
@@ -172,6 +172,14 @@ class Chat:
             else:
                 break
         print("Peer info: ", from_server)
+
+        try:
+            p = Peers(uname=uname,xpublicKey=from_server['xpub'],ypublicKey=from_server['ypub'])
+            p.save()
+        except:
+            pass
+
+
         if None not in from_server.values():
             self.sending_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.sending_sock.connect((from_server['ip'], from_server['port']))
@@ -186,8 +194,6 @@ class Chat:
 
         while True:
             conn, addr = self.receiving_sock.accept()
-            self.receive_key(conn)
-            self.send_key(conn)
             rthread = threading.Thread(target=self.get_msg,kwargs={'c':conn})
             rthread.start()
 
@@ -231,10 +237,10 @@ class Chat:
         enc_msg = self.encrypt(uname,msg)
         signed_digest = self.ecc.sign(self.pvt_key,enc_msg)
         
-        if uinfo['ke_done']==False:
-            self.send_key(uinfo['sock'])
-            self.receive_key(uinfo['sock'])
-            uinfo['ke_done'] = True
+        # if uinfo['ke_done']==False:
+        #     self.send_key(uinfo['sock'])
+        #     self.receive_key(uinfo['sock'])
+        #     uinfo['ke_done'] = True
         
         uinfo['sock'].send(bytes(json.dumps({'from_uname':self.username,'enc_msg':enc_msg,'signed_digest':signed_digest}),'utf-8'))
 
@@ -265,10 +271,14 @@ class Chat:
 
 
     def pub_keys(self,uname):
-        peer_info = Peers.select().where(Peers.uname==uname)[0]
-        xpub,ypub = int(peer_info.xpublicKey),int(peer_info.ypublicKey)
-        return xpub,ypub
-
+        try:
+            peer_info = Peers.select().where(Peers.uname==uname)[0]
+            xpub,ypub = int(peer_info.xpublicKey),int(peer_info.ypublicKey)
+            return xpub,ypub
+        except Exception as e:
+            print(e)
+            self.getpeerinfo(uname)
+            return self.pub_keys(uname)
 
     def startcli(self):
         t1 = threading.Thread(target=self.acc_connection)

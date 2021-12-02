@@ -65,12 +65,16 @@ class Server:
             if len(peer)==0:
                 peer = Peers(uname=uname,xpublicKey=xpub,ypublicKey=ypub)
                 peer.save()
+            elif(peer.xPublicKey==xpub and peer.yPublicKey==ypub):
+                pass
+            else:
+                1/0
+                
 
             self.addr_dict[uname] = (ip,port,time.time())
             conn.send(bytes(json.dumps({'status':'1'}),'utf-8'))
 
         except Exception as e:
-            print(e)
             conn.send(bytes(json.dumps({'status':'0'}),'utf-8'))
 
     def getpeerinfo(self,conn,peer):
