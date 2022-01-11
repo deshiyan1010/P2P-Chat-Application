@@ -81,6 +81,8 @@ class Chat:
 
 
     def __init__(self):
+
+        self.newMessageR = False
         
         self.ecc = EllipticCurveCryptography()
         self.aes = AESCipher()
@@ -114,10 +116,16 @@ class Chat:
             create_user.save()
 
 
-
+        
         self.connect()
         self.startcli()
         atexit.register(self.purge)
+
+    def pollForNewMessage(self):
+        nm = self.newMessageR
+        self.newMessageR = False
+        return nm
+
 
     def get_free_tcp_port(self):
 
@@ -152,6 +160,7 @@ class Chat:
         if from_server['status']==0:
             print("Username taken...")
             exit()
+        
         self.sock_to_server.close()
         
 
@@ -186,8 +195,10 @@ class Chat:
             from_server['sock'] = self.sending_sock
             from_server['ke_done'] = False
             self.add_dict[uname] = from_server
+            return True
         else:
             print("No such user found")
+            return False
         
     @threaded
     def acc_connection(self):
@@ -225,6 +236,8 @@ class Chat:
             user_obj = Peers.select().where(Peers.uname==msg_dict['from_uname'])[0]
             msg_obj = NewMessages(uname=user_obj,message=dec_msg,timestamp=time.time())
             msg_obj.save()
+
+            self.newMessageR = True
 
 
     def send_msg(self,uname,msg):

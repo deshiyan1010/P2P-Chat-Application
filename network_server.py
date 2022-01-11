@@ -59,25 +59,28 @@ class Server:
 
 
     def register(self,conn,uname,ip,port,xpub,ypub):
+        
         try:
             peer = Peers.select().where(Peers.uname==uname)
+
 
             if len(peer)==0:
                 peer = Peers(uname=uname,xpublicKey=xpub,ypublicKey=ypub)
                 peer.save()
-            elif(peer.xPublicKey==xpub and peer.yPublicKey==ypub):
-                pass
+            elif(peer[0].xpublicKey==str(xpub) and peer[0].ypublicKey==str(ypub)):
+                print("Found user in DB")
             else:
                 1/0
                 
-
             self.addr_dict[uname] = (ip,port,time.time())
             conn.send(bytes(json.dumps({'status':'1'}),'utf-8'))
 
         except Exception as e:
+            print(e)
             conn.send(bytes(json.dumps({'status':'0'}),'utf-8'))
 
     def getpeerinfo(self,conn,peer):
+        print(self.addr_dict)
         peer_details = self.addr_dict.get(peer,None)
 
         if peer_details != None:
