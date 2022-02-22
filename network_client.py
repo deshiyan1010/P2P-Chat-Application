@@ -8,7 +8,7 @@ from peewee import *
 import os
 
 from cryptotools import AESCipher, EllipticCurveCryptography
-
+from netdata import SERV_PORT,SERV_IP
 
 
 db = SqliteDatabase(os.path.join(os.path.dirname(__file__),'client.db'))
@@ -147,7 +147,7 @@ class Chat:
 
     def connect(self):
         self.sock_to_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock_to_server.connect(('0.0.0.0', 8081))
+        self.sock_to_server.connect((SERV_IP, SERV_PORT))
 
 
         uj = json.dumps({'register':self.username,'port':self.receiving_port,'xpub':self.xpub_key,'ypub':self.ypub_key})
@@ -167,7 +167,7 @@ class Chat:
 
     def getpeerinfo(self,uname):
         self.sock_to_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock_to_server.connect(('0.0.0.0', 8081))
+        self.sock_to_server.connect((SERV_IP, SERV_PORT))
 
         uj = json.dumps({'getpeer':uname})
 
@@ -299,7 +299,7 @@ class Chat:
 
     def purge(self):
         self.sock_to_server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock_to_server.connect(('0.0.0.0', 8081))
+        self.sock_to_server.connect((SERV_IP, SERV_PORT))
         uj = json.dumps({'purge':self.username})
         self.sock_to_server.send(bytes(uj,'utf-8'))
 

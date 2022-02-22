@@ -4,7 +4,7 @@ import json
 import time
 
 from cryptotools import AESCipher, EllipticCurveCryptography
-
+from netdata import SERV_PORT,SERV_IP
 
 from peewee import *
 import os
@@ -32,7 +32,7 @@ class Server:
 
     def __init__(self):
         self.serv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.serv.bind(('0.0.0.0', 8081))
+        self.serv.bind((SERV_IP, SERV_PORT))
         self.serv.listen(5)
         self.addr_dict = {}
 
