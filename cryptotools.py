@@ -4,7 +4,8 @@ import base64
 import hashlib
 from Crypto.Cipher import AES
 from Crypto import Random
-
+from tinyec import registry
+import hashlib, secrets, binascii
 
 class EllipticCurveCryptography:
     
@@ -16,7 +17,6 @@ class EllipticCurveCryptography:
         self.Gy = 32670510020758816978083085130507043184471273380659243275938904335757337482424
         self.GPoint = (self.Gx,self.Gy)
 
-        # self.privKey = 75263518707598184987916378021939673586055614731957507592904438851787542395619
 
     def modinv(self,a,n):
         lm, hm = 1,0
@@ -56,33 +56,13 @@ class EllipticCurveCryptography:
                 Q=self.ECadd(Q,GenPoint)
         return (Q)
 
-
     def generate_pvt_key(self):
-        a = 0
-        for i in range(256):
-            a = 2*a + random.randint(0,1)
-        
+        a = random.SystemRandom().getrandbits(256)        
         return a
-    
-
 
     def generate_ecc_pair(self):
-
         private_key = self.generate_pvt_key()
         PublicKey = self.EccMultiply(self.GPoint,private_key)
-        # print ("the private key:") 
-        # print (self.privKey)
-        # print ("the uncompressed public key (not address):")
-        # print (PublicKey)
-        # print("the uncompressed public key (HEX):")
-        # print("04" + "%064x" % PublicKey[0] + "%064x" % PublicKey[1])
-
-        # print("the official Public Key - compressed:") 
-        # if PublicKey[1] % 2 == 1: # If the Y value for the Public Key is odd.
-        #     public_key = "03"+str(hex(PublicKey[0])[2:]).zfill(64)
-        # else: # Or else, if the Y value is even.
-        #     public_key = "02"+str(hex(PublicKey[0])[2:]).zfill(64)
-
         return PublicKey[0],PublicKey[1],private_key
 
     def sign(self,private_key,hash):
@@ -105,12 +85,40 @@ class EllipticCurveCryptography:
             return True
         return False
 
-
-
     def create_shared_key(self,others_pub,own_pvt_key):
         return self.EccMultiply(others_pub,own_pvt_key)
 
 
+    def encrypt_AES_GCM(self,msg, secretKey):
+        aesCipher = AES.new(secretKey, AES.MODE_GCM)
+        ciphertext, authTag = aesCipher.encrypt_and_digest(msg.encode("utf-8"))
+        return (ciphertext, aesCipher.nonce, authTag)
+
+    def decrypt_AES_GCM(self,ciphertext, nonce, authTag, secretKey):
+        aesCipher = AES.new(secretKey, AES.MODE_GCM, nonce)
+        plaintext = aesCipher.decrypt_and_verify(ciphertext, authTag)
+        return plaintext
+
+    def ecc_point_to_256_bit_key(self,point):
+        sha = hashlib.sha256(int.to_bytes(point[0], 32, 'big'))
+        sha.update(int.to_bytes(point[1], 32, 'big'))
+        return sha.digest()
+
+    def encrypt_ECC(self,msg, pubKey):
+        
+        ciphertextPrivKey = self.generate_pvt_key()
+        sharedECCKey =  self.EccMultiply(pubKey,ciphertextPrivKey)
+        secretKey = self.ecc_point_to_256_bit_key(sharedECCKey)
+        ciphertext, nonce, authTag = self.encrypt_AES_GCM(msg, secretKey)
+        ciphertextPubKey = self.EccMultiply(self.GPoint,ciphertextPrivKey)
+        return (ciphertext, nonce, authTag, ciphertextPubKey)
+
+    def decrypt_ECC(self,encryptedMsg, privKey):
+        (ciphertext, nonce, authTag, ciphertextPubKey) = encryptedMsg
+        sharedECCKey = self.EccMultiply(ciphertextPubKey,privKey)
+        secretKey = self.ecc_point_to_256_bit_key(sharedECCKey)
+        plaintext = self.decrypt_AES_GCM(ciphertext, nonce, authTag, secretKey)
+        return plaintext
 
 
 
